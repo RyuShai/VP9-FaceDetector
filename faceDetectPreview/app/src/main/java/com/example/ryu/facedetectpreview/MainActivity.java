@@ -1,15 +1,28 @@
 package com.example.ryu.facedetectpreview;
 
+import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.ServiceConnection;
 import android.graphics.Bitmap;
 import android.os.AsyncTask;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.SurfaceView;
+import android.view.View;
 import android.view.WindowManager;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
@@ -32,14 +45,74 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 import static org.opencv.core.Core.*;
 
 public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener {
+    /*
+    * Notifications from UsbService will be received here.
+    */
+    private final BroadcastReceiver mUsbReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            switch (intent.getAction()) {
+                case UsbService.ACTION_USB_PERMISSION_GRANTED: // USB PERMISSION GRANTED
+                    Toast.makeText(context, "USB Ready", Toast.LENGTH_SHORT).show();
+                    break;
+                case UsbService.ACTION_USB_PERMISSION_NOT_GRANTED: // USB PERMISSION NOT GRANTED
+                    Toast.makeText(context, "USB Permission not granted", Toast.LENGTH_SHORT).show();
+                    break;
+                case UsbService.ACTION_NO_USB: // NO USB CONNECTED
+                    Toast.makeText(context, "No USB connected", Toast.LENGTH_SHORT).show();
+                    break;
+                case UsbService.ACTION_USB_DISCONNECTED: // USB DISCONNECTED
+                    Toast.makeText(context, "USB disconnected", Toast.LENGTH_SHORT).show();
+                    break;
+                case UsbService.ACTION_USB_NOT_SUPPORTED: // USB NOT SUPPORTED
+                    Toast.makeText(context, "USB device not supported", Toast.LENGTH_SHORT).show();
+                    break;
+            }
+        }
+    };
+    public enum DIRECTION{
+        UP,
+        DOWN,
+        LEFT,
+        RIGHT
+    }
     private static String TAG = "Ryu_MainActivity";
-
-    //
+    private CameraBridgeViewBase openCvCameraView;
+    private CascadeClassifier cascadesClassifier;
+    private Mat grayScaleImage;
+    private int absoluteFaceSize;
+    private TextView display;
+    Button btnUp,btnDown,btnLeft,btnRight,btnCenter;
+    Spinner listFolder;
     JavaCameraView jCamera;
+
+    private List<String> folders;
+    private Spinner spinner;
+    private int  valueX=0,valueY=0,step=1,stepMax=10,stepMin=1;
+    private UsbService usbService;
+    private MyHandler mHandler;
+    private final ServiceConnection usbConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName arg0, IBinder arg1) {
+            usbService = ((UsbService.UsbBinder) arg1).getService();
+            usbService.setHandler(mHandler);
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName arg0) {
+            usbService = null;
+        }
+    };
+
+
     BaseLoaderCallback mLoaderCallBack= new BaseLoaderCallback(this) {
         @Override
         public void onManagerConnected(int status) {
@@ -57,10 +130,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             }
         }
     };
-    private CameraBridgeViewBase openCvCameraView;
-    private CascadeClassifier cascadesClassifier;
-    private Mat grayScaleImage;
-    private int absoluteFaceSize;
+
     Mat mRgba;
     //
     // Used to load the 'native-lib' library on application startup.
@@ -104,18 +174,19 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+        setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-        openCvCameraView = new JavaCameraView(this, -1);
-        TextView txView = new TextView();
-        openCvCameraView.addChildrenForAccessibility();
-        setContentView(openCvCameraView);
+        //init gui
+        initButton();
+        String path = Environment.getExternalStorageDirectory()+"/Download";
+        Log.d(TAG,path);
+        GetListFolder(path);
+        openCvCameraView = (CameraBridgeViewBase) findViewById(R.id.Camera);
+        openCvCameraView.setVisibility(SurfaceView.VISIBLE);
         openCvCameraView.setCvCameraViewListener(this);
-//        jCamera = (JavaCameraView) findViewById(R.id.javaCameraView);
-//        jCamera.setVisibility(SurfaceView.VISIBLE);
-//        jCamera.setCvCameraViewListener(this);
-        // Example of a call to a native method
+        //handle serial
+        mHandler = new MyHandler(this);
+        //
     }
 
     @Override
@@ -123,6 +194,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         super.onPause();
         if(jCamera!=null)
             jCamera.disableView();
+        unregisterReceiver(mUsbReceiver);
+        unbindService(usbConnection);
     }
 
     @Override
@@ -135,6 +208,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     @Override
     protected void onResume(){
         super.onResume();
+        setFilters();  // Start listening notifications from UsbService
+        startService(UsbService.class,usbConnection,null); // Start UsbService(if it was not started before) and Bind it
         if(OpenCVLoader.initDebug())
         {
             Log.d(TAG,"opencv loadded");
@@ -143,7 +218,110 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             Log.d(TAG,"opencv load failed");
             OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_2_0, MainActivity.this , mLoaderCallBack);
         }
+
     }
+    //init widget gui
+    private void initButton()
+    {
+        btnCenter = (Button) findViewById(R.id.btnCenter);
+        btnUp = (Button) findViewById(R.id.btnUp);
+        btnDown =(Button) findViewById(R.id.btnDown);
+        btnLeft = (Button) findViewById(R.id.btnLeft);
+        btnRight = (Button) findViewById(R.id.btnRight);
+
+        btnCenter.setText(String.valueOf(step));
+        btnCenter.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                step++;
+                if(step>stepMax) step = stepMin;
+                btnCenter.setText(String.valueOf(step));
+            }
+        });
+
+        btnUp.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                DirectionBtnClicked(DIRECTION.UP);
+            }
+        });
+
+        btnDown.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                DirectionBtnClicked(DIRECTION.DOWN);
+            }
+        });
+
+        btnLeft.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                DirectionBtnClicked(DIRECTION.LEFT);
+            }
+        });
+
+        btnRight.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                DirectionBtnClicked(DIRECTION.RIGHT);
+            }
+        });
+    }
+
+    void GetListFolder(String path)
+    {
+        folders = new ArrayList<String>();
+        File f = new File(path);
+        File[] files = f.listFiles();
+        for (File inFile : files) {
+            if (inFile.isDirectory()) {
+                // is directory
+                Log.d(TAG,inFile.getAbsolutePath());
+                folders.add(inFile.getAbsolutePath());
+            }
+        }
+        spinner = (Spinner) findViewById(R.id.spinner);
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+                this,android.R.layout.simple_spinner_dropdown_item,folders
+        );
+        spinner.setAdapter(adapter);
+    }
+
+    void DirectionBtnClicked(DIRECTION direction)
+    {
+        switch (direction)
+        {
+            case UP:
+                valueX+=step;
+                sendData(valueX,valueY);
+                break;
+            case DOWN:
+                valueX-=step;
+                sendData(valueX,valueY);
+                break;
+            case LEFT:
+                valueY-=step;
+                sendData(valueX,valueY);
+                break;
+            case RIGHT:
+                valueY+=step;
+                sendData(valueX,valueY);
+                break;
+        }
+    }
+
+    void sendData(int posX, int posY)
+    {
+        if(posX<0) posX=0;
+        if(posX>4000) posX=4000;
+        if(posY<0) posY=0;
+        if(posY>4000) posY=4000;
+
+        String data = "X"+String.valueOf(posX)+" Y"+String.valueOf(posY)+" ";
+        Toast.makeText(getApplicationContext(),data,Toast.LENGTH_SHORT).show();
+        usbService.write(data.getBytes());
+    }
+
     /**
      * A native method that is implemented by the 'native-lib' native library,
      * which is packaged with this application.
@@ -163,28 +341,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     @Override
     public Mat onCameraFrame(Mat inputFrame) {
-        Imgproc.cvtColor(inputFrame,grayScaleImage,Imgproc.COLOR_RGBA2BGR);
-        MatOfRect faces = new MatOfRect();
-        //use classsifier to detect face
-        if(cascadesClassifier != null)
-        {
-            cascadesClassifier.detectMultiScale(grayScaleImage,faces,1.1,2,2,
-                    new Size(absoluteFaceSize,absoluteFaceSize), new Size());
-        }
-        Rect[] facesArray  = faces.toArray();
-        for(int i=0; i<facesArray.length;i++){
-            Imgproc.rectangle(inputFrame, facesArray[i].tl(),facesArray[i].br(),
-                    new Scalar(0,255,0,255),3);
-            Rect crop = new Rect();
-            crop.x = facesArray[i].x;
-            crop.y = facesArray[i].y;
-            crop.height =facesArray[i].height;
-            crop.width = facesArray[i].width;
 
-            mRgba = new Mat(inputFrame,crop);
-            ProcessWriteImage pwi = new ProcessWriteImage(this);
-            pwi.execute();
-        }
         return inputFrame;
     }
     public void imagePrint(Mat mat)
@@ -233,6 +390,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             }
         }
     }
+
+    //process write image wil write image to screen in other thread
     private class ProcessWriteImage extends AsyncTask<Void,Void,String>{
         MainActivity mainAct;
         public ProcessWriteImage(MainActivity main){
@@ -248,6 +407,59 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         protected String doInBackground(Void... params) {
             mainAct.imagePrint(mainAct.mRgba);
             return null;
+        }
+    }
+
+    //create service
+    private void startService(Class<?> service, ServiceConnection serviceConnection, Bundle extras) {
+        if (!UsbService.SERVICE_CONNECTED) {
+            Intent startService = new Intent(this, service);
+            if (extras != null && !extras.isEmpty()) {
+                Set<String> keys = extras.keySet();
+                for (String key : keys) {
+                    String extra = extras.getString(key);
+                    startService.putExtra(key, extra);
+                }
+            }
+            startService(startService);
+        }
+        Intent bindingIntent = new Intent(this, service);
+        bindService(bindingIntent, serviceConnection, Context.BIND_AUTO_CREATE);
+    }
+
+    private void setFilters() {
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(UsbService.ACTION_USB_PERMISSION_GRANTED);
+        filter.addAction(UsbService.ACTION_NO_USB);
+        filter.addAction(UsbService.ACTION_USB_DISCONNECTED);
+        filter.addAction(UsbService.ACTION_USB_NOT_SUPPORTED);
+        filter.addAction(UsbService.ACTION_USB_PERMISSION_NOT_GRANTED);
+        registerReceiver(mUsbReceiver, filter);
+    }
+    /*
+     * This handler will be passed to UsbService. Data received from serial port is displayed through this handler
+     */
+    private static class MyHandler extends Handler {
+        private final WeakReference<MainActivity> mActivity;
+
+        public MyHandler(MainActivity activity) {
+            mActivity = new WeakReference<>(activity);
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+                case UsbService.MESSAGE_FROM_SERIAL_PORT:
+//                    String data = (String) msg.obj;
+//                    mActivity.get().display.append(data);
+                    break;
+                case UsbService.CTS_CHANGE:
+                    Toast.makeText(mActivity.get(), "CTS_CHANGE",Toast.LENGTH_LONG).show();
+                    break;
+                case UsbService.DSR_CHANGE:
+                    Toast.makeText(mActivity.get(), "DSR_CHANGE",Toast.LENGTH_LONG).show();
+                    break;
+            }
         }
     }
 }

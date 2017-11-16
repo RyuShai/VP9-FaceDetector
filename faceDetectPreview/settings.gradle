@@ -1,2 +1,3 @@
-include ':app'
+include ':app', ':usbserial'
 include ':openCVLibrary320'
+include ':openCVLibrary331'

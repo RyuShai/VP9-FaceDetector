@@ -1,27 +1,84 @@
-<?xml version="1.0" encoding="utf-8"?>
 <android.support.constraint.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    xmlns:opencv="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    tools:context="com.example.ryu.facedetectpreview.MainActivity">
+    android:layout_height="match_parent">
 
-    <org.opencv.android.CameraBridgeViewbase
-        android:layout_width="576dp"
-        android:layout_height="295dp"
-        tools:layout_editor_absoluteY="16dp"
-        tools:layout_editor_absoluteX="8dp"
-        android:id="@+id/javaCameraView"
-        />
-    <TextView
-        android:layout_width="235dp"
-        android:layout_height="106dp"
-        android:id="@+id/dataLogView"
-        android:text="haahahah\nahahaha\"
-        android:background="#222222"
-        android:textColor="@color/colorAccent"
-        tools:layout_editor_absoluteY="0dp"
-        tools:layout_editor_absoluteX="199dp" />
+    <org.opencv.android.JavaCameraView
+        android:layout_width="match_parent"
+        android:layout_height="500dp"
+        android:visibility="gone"
+        android:id="@+id/Camera"
+        opencv:show_fps="true"
+        opencv:camera_id="any"
+        opencv:layout_constraintLeft_toLeftOf="parent"
+        opencv:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/btnUp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="up"
+        tools:layout_constraintBottom_creator="1"
+        opencv:layout_constraintBottom_toTopOf="@+id/btnCenter"
+        tools:layout_constraintLeft_creator="1"
+        opencv:layout_constraintLeft_toRightOf="@+id/btnLeft" />
+
+    <Button
+        android:id="@+id/btnDown"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Down"
+
+        tools:layout_constraintRight_creator="1"
+        tools:layout_constraintBottom_creator="1"
+        opencv:layout_constraintBottom_toBottomOf="parent"
+        opencv:layout_constraintRight_toRightOf="@+id/btnCenter"
+        tools:layout_constraintLeft_creator="1"
+        android:layout_marginBottom="37dp"
+        opencv:layout_constraintLeft_toLeftOf="@+id/btnCenter" />
+
+    <Button
+        android:id="@+id/btnLeft"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Left"
+        android:layout_marginStart="38dp"
+        opencv:layout_constraintBaseline_toBaselineOf="@+id/btnCenter"
+        opencv:layout_constraintLeft_toLeftOf="parent" />
+
+    <Button
+        android:id="@+id/btnRight"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Right"
+        opencv:layout_constraintBaseline_toBaselineOf="@+id/btnCenter"
+        tools:layout_constraintBaseline_creator="1"
+        tools:layout_constraintLeft_creator="1"
+        opencv:layout_constraintLeft_toRightOf="@+id/btnDown" />
+
+    <Button
+        android:id="@+id/btnCenter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="center"
+        tools:layout_constraintRight_creator="1"
+        tools:layout_constraintBottom_creator="1"
+        opencv:layout_constraintBottom_toTopOf="@+id/btnDown"
+        opencv:layout_constraintRight_toRightOf="@+id/btnUp"
+        tools:layout_constraintLeft_creator="1"
+        opencv:layout_constraintLeft_toLeftOf="@+id/btnUp" />
+
+    <Spinner
+        android:id="@+id/spinner"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        tools:layout_constraintRight_creator="1"
+        tools:layout_constraintBottom_creator="1"
+        opencv:layout_constraintBottom_toTopOf="@+id/btnUp"
+        opencv:layout_constraintRight_toRightOf="parent"
+        tools:layout_constraintLeft_creator="1"
+        opencv:layout_constraintLeft_toLeftOf="parent" />
 
 
 </android.support.constraint.ConstraintLayout>
