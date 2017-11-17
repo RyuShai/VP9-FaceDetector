@@ -46,7 +46,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
+import java.sql.Date;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 import java.util.Set;
 
@@ -90,10 +92,11 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     private Mat grayScaleImage;
     private int absoluteFaceSize;
     private TextView display;
-    Button btnUp,btnDown,btnLeft,btnRight,btnCenter;
+    Button btnUp,btnDown,btnLeft,btnRight,btnCenter,btnTakePicure;
     Spinner listFolder;
     JavaCameraView jCamera;
 
+    private boolean takePicture=false;
     private List<String> folders;
     private Spinner spinner;
     private int  valueX=0,valueY=0,step=1,stepMax=10,stepMin=1;
@@ -228,6 +231,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         btnDown =(Button) findViewById(R.id.btnDown);
         btnLeft = (Button) findViewById(R.id.btnLeft);
         btnRight = (Button) findViewById(R.id.btnRight);
+        btnTakePicure = (Button) findViewById(R.id.btnTakePicture);
 
         btnCenter.setText(String.valueOf(step));
         btnCenter.setOnClickListener(new View.OnClickListener() {
@@ -264,6 +268,13 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             @Override
             public void onClick(View view) {
                 DirectionBtnClicked(DIRECTION.RIGHT);
+            }
+        });
+
+        btnTakePicure.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                takePicture = true;
             }
         });
     }
@@ -330,7 +341,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     @Override
     public void onCameraViewStarted(int width, int height) {
-       grayScaleImage = new Mat(height,width,CvType.CV_8UC4);
+       grayScaleImage = new Mat(height,width,CvType.CV_8UC3);
         absoluteFaceSize = (int) (height*0.2);
     }
 
@@ -341,7 +352,11 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     @Override
     public Mat onCameraFrame(Mat inputFrame) {
-
+        if(takePicture)
+        {
+            imagePrint(inputFrame);
+            takePicture=false;
+        }
         return inputFrame;
     }
     public void imagePrint(Mat mat)
@@ -356,7 +371,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
         FileOutputStream os= null;
         String fileName ;
-        File sd = new File(Environment.getExternalStorageDirectory()+"/Ryu");
+        File sd = new File(spinner.getSelectedItem().toString());
         boolean success = true;
         if(!sd.exists()){
             success = sd.mkdir();
@@ -364,10 +379,10 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         if(success){
             File dest;
             do{
-                fileName = sd.getAbsolutePath()+"/image"+iNum+".png";
+                java.util.Date current = Calendar.getInstance().getTime();
+                fileName = sd.getAbsolutePath()+"/"+current.toString()+".png";
                 Log.d(TAG,"file path: "+ fileName);
                 dest= new File(fileName);
-                iNum++;
             }while(dest.exists());
             try{
                 os = new FileOutputStream(dest);

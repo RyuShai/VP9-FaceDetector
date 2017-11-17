@@ -5,8 +5,8 @@
     android:layout_height="match_parent">
 
     <org.opencv.android.JavaCameraView
-        android:layout_width="match_parent"
-        android:layout_height="500dp"
+        android:layout_width="750dp"
+        android:layout_height="600dp"
         android:visibility="gone"
         android:id="@+id/Camera"
         opencv:show_fps="true"
@@ -79,6 +79,21 @@
         opencv:layout_constraintRight_toRightOf="parent"
         tools:layout_constraintLeft_creator="1"
         opencv:layout_constraintLeft_toLeftOf="parent" />
+
+    <Button
+        android:id="@+id/btnTakePicture"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="take picture"
+        opencv:layout_constraintLeft_toRightOf="@+id/btnUp"
+        android:layout_marginLeft="114dp"
+        tools:layout_constraintTop_creator="1"
+        android:layout_marginStart="114dp"
+        opencv:layout_constraintTop_toBottomOf="@+id/spinner" />
+        <!--opencv:layout_constraintEnd_toStartOf="@+id/btnUp"-->
+
+        android:layout_margin="100dp"
+        />
 
 
 </android.support.constraint.ConstraintLayout>
