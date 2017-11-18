@@ -54,7 +54,7 @@ import java.util.Set;
 
 import static org.opencv.core.Core.*;
 
-public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener {
+public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener, View.OnClickListener {
     /*
     * Notifications from UsbService will be received here.
     */
@@ -80,6 +80,18 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             }
         }
     };
+
+    @Override
+    public void onClick(View view) {
+        switch (view.getId())
+        {
+            case R.id.btnTakePicture:
+            {
+                break;
+            }
+        }
+    }
+
     public enum DIRECTION{
         UP,
         DOWN,
@@ -223,6 +235,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
 
     }
+
     //init widget gui
     private void initButton()
     {
