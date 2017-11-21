@@ -7,6 +7,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.hardware.Camera;
 import android.os.AsyncTask;
 import android.os.Environment;
 import android.os.Handler;
@@ -17,6 +19,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
@@ -28,23 +31,29 @@ import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.JavaCameraView;
 import org.opencv.android.OpenCVLoader;
-import org.opencv.android.Utils;
+  import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.CvException;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfRect;
+import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.objdetect.CascadeClassifier;
+import org.opencv.objdetect.Objdetect;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.ref.WeakReference;
 import java.sql.Date;
 import java.util.ArrayList;
@@ -53,8 +62,11 @@ import java.util.List;
 import java.util.Set;
 
 import static org.opencv.core.Core.*;
+import static org.opencv.core.CvType.CV_8UC1;
+import static org.opencv.imgproc.Imgproc.INTER_LINEAR;
+import static org.opencv.imgproc.Imgproc.resize;
 
-public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener, View.OnClickListener {
+public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2, View.OnClickListener {
     /*
     * Notifications from UsbService will be received here.
     */
@@ -101,6 +113,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     private static String TAG = "Ryu_MainActivity";
     private CameraBridgeViewBase openCvCameraView;
     private CascadeClassifier cascadesClassifier;
+    private CascadeClassifier foreheadCascade;
     private Mat grayScaleImage;
     private int absoluteFaceSize;
     private TextView display;
@@ -108,6 +121,14 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     Spinner listFolder;
     JavaCameraView jCamera;
 
+    //test
+    Mat foreheadFrame;
+    MatOfRect foreheadList;
+    List<Mat> history_frames;
+    List<MatOfRect> history_faces;
+    float scale =3.0f;
+    TextView txtView;
+    //
     private boolean takePicture=false;
     private List<String> folders;
     private Spinner spinner;
@@ -164,7 +185,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     //function
     private void initializeOpenCVDependencies(){
         try{
-            InputStream is = getResources().openRawResource(R.raw.haarcascade_frontalface_alt);
+            InputStream is = getResources().openRawResource(R.raw.cascade_tuc2);
             File cascadeDir  = getDir("cascade", Context.MODE_PRIVATE);
             File mCascadeFile = new File (cascadeDir, "haarcascade_frontalface_alt.xml");
             FileOutputStream os = new FileOutputStream(mCascadeFile);
@@ -176,7 +197,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             }
             is.close();
             os.close();
-            cascadesClassifier = new CascadeClassifier(mCascadeFile.getAbsolutePath());
+            foreheadCascade = new CascadeClassifier(mCascadeFile.getAbsolutePath());
         }catch(Exception ex)
         {
             Log.e(TAG,"error loadding cascade", ex);
@@ -189,19 +210,53 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+//Remove notification bar
+        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(R.layout.activity_main);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         //init gui
         initButton();
-        String path = Environment.getExternalStorageDirectory()+"/Download";
+        String path = Environment.getExternalStorageDirectory()+"/Ryu";
         Log.d(TAG,path);
         GetListFolder(path);
+
+//        Camera camera = Camera.open();
+//        Camera.Parameters params = camera.getParameters();
+//        List<Camera.Size> sizes = params.getSupportedPictureSizes();
+//        for (Camera.Size cam:
+//             sizes) {
+//            txtView.setText(txtView.getText()+ String.valueOf(cam.width) + "-"+String.valueOf(cam.height)+"\n");
+//        }
+//        camera.release();
+
         openCvCameraView = (CameraBridgeViewBase) findViewById(R.id.Camera);
         openCvCameraView.setVisibility(SurfaceView.VISIBLE);
         openCvCameraView.setCvCameraViewListener(this);
         //handle serial
         mHandler = new MyHandler(this);
         //
+        foreheadFrame = new Mat();
+        foreheadList = new MatOfRect();
+        initializeOpenCVDependencies();
+        history_frames = new ArrayList<Mat>();
+        history_faces = new ArrayList<MatOfRect>();
+        foreheadFrame = new Mat();
+        //last option
+//        try {
+//            FileInputStream fis = new FileInputStream(yamlPath);
+//            BufferedReader bfr = new BufferedReader(new InputStreamReader(fis));
+//            String line = bfr.readLine();
+//            while(line!=null)
+//            {
+//                Log.d("yaml", line);
+//                line = bfr.readLine();
+//            }
+//        } catch (FileNotFoundException e) {
+//            e.printStackTrace();
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
     }
 
     @Override
@@ -231,11 +286,31 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             mLoaderCallBack.onManagerConnected(BaseLoaderCallback.SUCCESS);
         }else{
             Log.d(TAG,"opencv load failed");
-            OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_2_0, MainActivity.this , mLoaderCallBack);
+            OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_3_0, MainActivity.this , mLoaderCallBack);
         }
 
     }
+    void detectCPU(double scale, boolean calTime)
+    {
+        Mat cpu_gray = new Mat();
+        Mat cpu_smallImg= new Mat( Round(foreheadFrame.rows()/scale), Round(foreheadFrame.cols()/scale), CV_8UC1);
+        Imgproc.cvtColor(foreheadFrame, cpu_gray, Imgproc.COLOR_RGB2GRAY);
+        resize(cpu_gray, cpu_smallImg, cpu_smallImg.size(), 0, 0, INTER_LINEAR);
+        Log.e(TAG, "size: "+cpu_smallImg.size());
+        Imgproc.equalizeHist(cpu_smallImg, cpu_smallImg);
+        foreheadCascade.detectMultiScale(cpu_smallImg, foreheadList, 1.1, 5, Objdetect.CASCADE_SCALE_IMAGE,
+               new Size(60, 60),new Size(160, 160)); //Size(40, 40), Size(70, 70));
 
+    }
+
+    int Round(double x){
+        int y;
+        if(x >= (int)x+0.5)
+        y = (int)x++;
+        else
+        y = (int)x;
+        return y;
+    }
     //init widget gui
     private void initButton()
     {
@@ -245,6 +320,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         btnLeft = (Button) findViewById(R.id.btnLeft);
         btnRight = (Button) findViewById(R.id.btnRight);
         btnTakePicure = (Button) findViewById(R.id.btnTakePicture);
+        txtView = (TextView) findViewById(R.id.textView);
 
         btnCenter.setText(String.valueOf(step));
         btnCenter.setOnClickListener(new View.OnClickListener() {
@@ -306,7 +382,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
         spinner = (Spinner) findViewById(R.id.spinner);
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(
-                this,android.R.layout.simple_spinner_dropdown_item,folders
+                this,android.R.layout.simple_dropdown_item_1line,folders
         );
         spinner.setAdapter(adapter);
     }
@@ -354,8 +430,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     @Override
     public void onCameraViewStarted(int width, int height) {
-       grayScaleImage = new Mat(height,width,CvType.CV_8UC3);
-        absoluteFaceSize = (int) (height*0.2);
+       grayScaleImage = new Mat(1080,1920,CvType.CV_8UC3);
+
+//        absoluteFaceSize = (int) (height*0.2);
     }
 
     @Override
@@ -364,14 +441,105 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     }
 
     @Override
-    public Mat onCameraFrame(Mat inputFrame) {
+    public Mat onCameraFrame(final CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
+        foreheadFrame.release();
+        inputFrame.rgba().copyTo(foreheadFrame);
+
+        Log.e(TAG, foreheadFrame.size() + " " + foreheadFrame.empty());
+
+        detectCPU(scale,false);
+        history_frames.add(foreheadFrame);
+        history_faces.add(foreheadList);
+        int cur_size = history_frames.size();
+        if(cur_size>4)
+        {
+//            double fps = cv::getTickFrequency() / (cv::getTickCount() - start);
+            //std::cout << "FPS : " << fps << std::endl;
+
+            //Using this for DNN filter out some non-head Mat
+            List<Boolean> yesheads = new ArrayList<Boolean>();
+
+
+            for (int i=0; i<(history_faces.get(cur_size-3).toList().size());i++) yesheads.add(true);
+
+
+            //------Do the final check to remove moise/////////////////////////////////////////////////
+
+            //Check the face list with previous and later frame, make sure it is face, not noise
+            MatOfRect faces_check1, faces_check2;
+            faces_check1 = history_faces.get(cur_size-3);
+            faces_check2 = history_faces.get(cur_size-4);
+            //Check face between consecutive frames to remove noise
+            for (int i=0;i<faces_check1.toList().size();i++){
+                Point pt1 = new Point(faces_check1.toList().get(i).x+faces_check1.toList().get(i).width/2, faces_check1.toList().get(i).y+faces_check1.toList().get(i).height/2);
+                float mindist = 100000;
+                for (int j=0;j<faces_check2.toList().size();j++){
+                    Point pt2 = new Point(faces_check2.toList().get(j).x+faces_check2.toList().get(j).width/2, faces_check2.toList().get(j).y+faces_check2.toList().get(j).height/2);
+                    float dist = (faces_check1.toList().get(i).x-faces_check2.toList().get(j).x)*(faces_check1.toList().get(i).x-faces_check2.toList().get(j).x)+
+                            (faces_check1.toList().get(i).y-faces_check2.toList().get(j).y)*(faces_check1.toList().get(i).y-faces_check2.toList().get(j).y);
+                    if (dist<mindist) mindist = dist;
+                }
+                if (mindist>50) yesheads.set(i,false);
+            }
+
+            //Check face in previewing frame to remove occlusion
+            for (int i=0;i<faces_check1.toList().size();i++){
+                if (yesheads.get(i)==false) continue;
+                for (int j=i+1;j<faces_check1.toList().size();j++){
+                    if (yesheads.get(j)==false) continue;
+                    float distx = Math.abs(faces_check1.toList().get(i).x-faces_check1.toList().get(j).x);
+                    float disty = Math.abs(faces_check1.toList().get(i).y-faces_check1.toList().get(j).y);
+                    if (distx<(int) faces_check1.toList().get(i).width && disty<5*(int) faces_check1.toList().get(i).height){
+                        if (faces_check1.toList().get(i).y>faces_check1.toList().get(j).y) yesheads.set(j,false);
+                        else yesheads.set(i,false);
+                    }
+                }
+            }
+
+            ///////////////////////NOW DRAW FRAME/////////////////////////////////////////////
+            int i = 0;
+            int counthead =0;
+            Mat img = history_frames.get(cur_size-3);
+            for( ; i<faces_check1.toList().size(); i++ )
+            {
+                if (yesheads.get(i)){
+                    Rect rect = faces_check1.toArray()[i];
+                    // std::cout<<faces_check1[i].y<<" "<<(int) img.rows/3<<std::endl;
+                    if (faces_check1.toArray()[i].y >(int) img.rows()/3 && faces_check1.toArray()[i].y<(int) img.rows()*2/3)
+                    {
+                        double p1 = faces_check1.toArray()[i].x+(int) faces_check1.toArray()[i].width/5;
+                        double p2 = faces_check1.toArray()[i].y+(int) faces_check1.toArray()[i].height/2.7;
+                        double p3 =  faces_check1.toArray()[i].width*3/5;
+                        double p4 = faces_check1.toArray()[i].height/3;
+                        Imgproc.rectangle(img,new Point(p1,p2), new Point(p3,p4),new Scalar(0,255,0),2);
+                    }
+                        //cv::rectangle(img,faces_check1[i],CV_RGB(0,255,0),2);
+
+                    //Check here if value is negative
+                    counthead++;
+                }
+            }
+            if( Math.abs(scale-1.0)>.001 )
+            {
+                resize(img, img,new Size((int)(img.cols()/scale), (int)(img.rows()/scale)));
+            }
+            //string str = "Number of people: "+std::to_string(counthead);
+            //putText(img, str, Point(20,20), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255,255,0), 2.0 );
+            takePicture=false;
+            history_faces.clear();
+            history_frames.clear();
+            return img;
+        }
+
         if(takePicture)
         {
-            imagePrint(inputFrame);
+            imagePrint(inputFrame.rgba());
             takePicture=false;
         }
-        return inputFrame;
+        return inputFrame.rgba();
     }
+
+
     public void imagePrint(Mat mat)
     {
         int iNum =0;

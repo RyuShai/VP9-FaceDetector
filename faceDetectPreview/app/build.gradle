@@ -5,10 +5,12 @@ android {
     buildToolsVersion "25.0.2"
     defaultConfig {
         applicationId "com.example.ryu.facedetectpreview"
-        minSdkVersion 23
+        minSdkVersion 21
         targetSdkVersion 25
         versionCode 1
         versionName "1.0"
+        multiDexEnabled true
+
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
             cmake {
@@ -39,4 +41,5 @@ dependencies {
     compile project(':openCVLibrary331')
     compile project(':usbserial')
     compile 'com.github.felHR85:UsbSerial:4.5'
+    compile project(':yamlbeans-1.0')
 }

@@ -1,0 +1,2 @@
+configurations.maybeCreate("default")
+artifacts.add("default", file('yamlbeans-1.0.jar'))

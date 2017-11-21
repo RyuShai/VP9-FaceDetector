@@ -12,6 +12,7 @@
             <option value="$PROJECT_DIR$/openCVLibrary320" />
             <option value="$PROJECT_DIR$/openCVLibrary331" />
             <option value="$PROJECT_DIR$/usbserial" />
+            <option value="$PROJECT_DIR$/yamlbeans-1.0" />
           </set>
         </option>
         <option name="resolveModulePerSourceSet" value="false" />

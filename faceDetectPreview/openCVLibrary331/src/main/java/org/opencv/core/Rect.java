@@ -31,6 +31,8 @@ public class Rect {
         set(vals);
     }
 
+
+
     public void set(double[] vals) {
         if (vals != null) {
             x = vals.length > 0 ? (int) vals[0] : 0;

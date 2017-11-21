@@ -7,6 +7,7 @@
       <module fileurl="file://$PROJECT_DIR$/openCVLibrary320/openCVLibrary320.iml" filepath="$PROJECT_DIR$/openCVLibrary320/openCVLibrary320.iml" />
       <module fileurl="file://$PROJECT_DIR$/openCVLibrary331/openCVLibrary331.iml" filepath="$PROJECT_DIR$/openCVLibrary331/openCVLibrary331.iml" />
       <module fileurl="file://$PROJECT_DIR$/usbserial/usbserial.iml" filepath="$PROJECT_DIR$/usbserial/usbserial.iml" />
+      <module fileurl="file://$PROJECT_DIR$/yamlbeans-1.0/yamlbeans-1.0.iml" filepath="$PROJECT_DIR$/yamlbeans-1.0/yamlbeans-1.0.iml" />
     </modules>
   </component>
 </project>

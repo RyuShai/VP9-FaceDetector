@@ -5,11 +5,11 @@
     android:layout_height="match_parent">
 
     <org.opencv.android.JavaCameraView
-        android:layout_width="750dp"
-        android:layout_height="600dp"
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
         android:visibility="gone"
         android:id="@+id/Camera"
-        opencv:show_fps="true"
+        opencv:show_fps="false"
         opencv:camera_id="any"
         opencv:layout_constraintLeft_toLeftOf="parent"
         opencv:layout_constraintTop_toTopOf="parent" />
@@ -71,14 +71,15 @@
 
     <Spinner
         android:id="@+id/spinner"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
         tools:layout_constraintRight_creator="1"
         tools:layout_constraintBottom_creator="1"
         opencv:layout_constraintBottom_toTopOf="@+id/btnUp"
         opencv:layout_constraintRight_toRightOf="parent"
         tools:layout_constraintLeft_creator="1"
-        opencv:layout_constraintLeft_toLeftOf="parent" />
+        opencv:layout_constraintLeft_toLeftOf="parent"
+        android:layout_marginLeft="8dp" />
 
     <Button
         android:id="@+id/btnTakePicture"
@@ -90,7 +91,21 @@
         tools:layout_constraintTop_creator="1"
         android:layout_marginStart="114dp"
         opencv:layout_constraintTop_toBottomOf="@+id/spinner" />
-        <!--opencv:layout_constraintEnd_toStartOf="@+id/btnUp"-->
+
+    <TextView
+        android:id="@+id/textView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="TextView"
+        android:textColor="#FFA500"
+        tools:layout_constraintRight_creator="1"
+        tools:layout_constraintBottom_creator="1"
+        opencv:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginEnd="106dp"
+        opencv:layout_constraintRight_toRightOf="parent"
+        android:layout_marginBottom="52dp"
+        android:layout_marginRight="106dp" />
+    <!--opencv:layout_constraintEnd_toStartOf="@+id/btnUp"-->
 
         android:layout_margin="100dp"
         />
