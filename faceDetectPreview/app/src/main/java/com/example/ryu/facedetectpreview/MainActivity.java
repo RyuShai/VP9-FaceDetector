@@ -14,9 +14,11 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.os.SystemClock;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.Window;
@@ -51,10 +53,12 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.ref.WeakReference;
+import java.security.cert.PolicyNode;
 import java.sql.Date;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -64,6 +68,7 @@ import java.util.Set;
 import static org.opencv.core.Core.*;
 import static org.opencv.core.CvType.CV_8UC1;
 import static org.opencv.imgproc.Imgproc.INTER_LINEAR;
+import static org.opencv.imgproc.Imgproc.cvtColor;
 import static org.opencv.imgproc.Imgproc.resize;
 
 public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2, View.OnClickListener {
@@ -122,13 +127,19 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     JavaCameraView jCamera;
 
     //test
-    Mat foreheadFrame;
+    Rect subRect ;
+    Mat foreheadFrame ;
     MatOfRect foreheadList;
     List<Mat> history_frames;
     List<MatOfRect> history_faces;
     float scale =3.0f;
     TextView txtView;
+    Rect result;
+    List<Integer> resultCali;
     //
+    boolean StartDetect=false;
+    LaserColor colorMean;
+    List<LaserColor> lColor;
     private boolean takePicture=false;
     private List<String> folders;
     private Spinner spinner;
@@ -185,7 +196,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     //function
     private void initializeOpenCVDependencies(){
         try{
-            InputStream is = getResources().openRawResource(R.raw.cascade_tuc2);
+            InputStream is = getResources().openRawResource(R.raw.haarcascade_frontalface_alt);
             File cascadeDir  = getDir("cascade", Context.MODE_PRIVATE);
             File mCascadeFile = new File (cascadeDir, "haarcascade_frontalface_alt.xml");
             FileOutputStream os = new FileOutputStream(mCascadeFile);
@@ -213,35 +224,37 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         this.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
 //Remove notification bar
-        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_main);
         //init gui
         initButton();
         String path = Environment.getExternalStorageDirectory()+"/Ryu";
         Log.d(TAG,path);
         GetListFolder(path);
-
+//        readFromFile(Environment.getExternalStorageDirectory()+"/cam2laserMatrices.yml");
 //        Camera camera = Camera.open();
 //        Camera.Parameters params = camera.getParameters();
 //        List<Camera.Size> sizes = params.getSupportedPictureSizes();
 //        for (Camera.Size cam:
 //             sizes) {
-//            txtView.setText(txtView.getText()+ String.valueOf(cam.width) + "-"+String.valueOf(cam.height)+"\n");
+////            txtView.setText(txtView.getText()+ String.valueOf(cam.width) + "-"+String.valueOf(cam.height)+"\n");
+//            Log.e(TAG,String.valueOf(cam.width) + "-"+String.valueOf(cam.height));
 //        }
 //        camera.release();
-
-        openCvCameraView = (CameraBridgeViewBase) findViewById(R.id.Camera);
-        openCvCameraView.setVisibility(SurfaceView.VISIBLE);
-        openCvCameraView.setCvCameraViewListener(this);
+        initCamera();
+        colorMean = new LaserColor();
+        subRect = new Rect(460,400,530,350);
+        foreheadFrame = new Mat();
+        foreheadList = new MatOfRect();
+        lColor = new ArrayList<LaserColor>();
         //handle serial
         mHandler = new MyHandler(this);
         //
-        foreheadFrame = new Mat();
-        foreheadList = new MatOfRect();
         initializeOpenCVDependencies();
         history_frames = new ArrayList<Mat>();
         history_faces = new ArrayList<MatOfRect>();
-        foreheadFrame = new Mat();
+        resultCali = new ArrayList<Integer>();
+        result = new Rect();
         //last option
 //        try {
 //            FileInputStream fis = new FileInputStream(yamlPath);
@@ -290,27 +303,60 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
 
     }
-    void detectCPU(double scale, boolean calTime)
+//    void detectCPU(double scale, boolean calTime)
+//    {
+//        Mat cpu_gray = new Mat();
+//        Mat cpu_smallImg= new Mat( Round(foreheadFrame.rows()/scale), Round(foreheadFrame.cols()/scale), CV_8UC1);
+//        Imgproc.cvtColor(foreheadFrame, cpu_gray, Imgproc.COLOR_RGB2GRAY);
+//        resize(cpu_gray, cpu_smallImg, cpu_smallImg.size(), 0, 0, INTER_LINEAR);
+//        Log.e(TAG, "size: "+cpu_smallImg.size());
+//        Imgproc.equalizeHist(cpu_smallImg, cpu_smallImg);
+//        foreheadCascade.detectMultiScale(cpu_smallImg, foreheadList, 1.1, 5, Objdetect.CASCADE_SCALE_IMAGE,
+//               new Size(60, 60),new Size(160, 160)); //Size(40, 40), Size(70, 70));
+//
+//    }
+    int iMeanCount=0;
+    void initCamera()
     {
-        Mat cpu_gray = new Mat();
-        Mat cpu_smallImg= new Mat( Round(foreheadFrame.rows()/scale), Round(foreheadFrame.cols()/scale), CV_8UC1);
-        Imgproc.cvtColor(foreheadFrame, cpu_gray, Imgproc.COLOR_RGB2GRAY);
-        resize(cpu_gray, cpu_smallImg, cpu_smallImg.size(), 0, 0, INTER_LINEAR);
-        Log.e(TAG, "size: "+cpu_smallImg.size());
-        Imgproc.equalizeHist(cpu_smallImg, cpu_smallImg);
-        foreheadCascade.detectMultiScale(cpu_smallImg, foreheadList, 1.1, 5, Objdetect.CASCADE_SCALE_IMAGE,
-               new Size(60, 60),new Size(160, 160)); //Size(40, 40), Size(70, 70));
+        openCvCameraView = (CameraBridgeViewBase) findViewById(R.id.Camera);
+        openCvCameraView.setMaxFrameSize(1920,1080);
+        openCvCameraView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent motionEvent) {
+                if(motionEvent.getAction() == MotionEvent.ACTION_DOWN && iMeanCount <9 )
+                {
+                    int x = (int) motionEvent.getX();
+                    int y = (int) motionEvent.getY();
+                    txtView.setText("X: "+x + " Y "+y);
+                    Mat getColorMat = foreheadFrame.clone();
+                    Imgproc.cvtColor(getColorMat,getColorMat,Imgproc.COLOR_RGBA2RGB);
+                    double[] color = getColorMat.get(x,y);
+                    LaserColor addColor = new LaserColor((int)color[0],(int)color[1],(int)color[2]);
+                    lColor.add(addColor);
+                    iMeanCount++;
+                    if(iMeanCount==9)
+                    {
+                        for(int i=0; i<lColor.size();i++)
+                        {
+                            colorMean.setBlue(colorMean.getBlue()+lColor.get(i).getBlue());
+                            colorMean.setGreen(colorMean.getGreen()+lColor.get(i).getGreen());
+                            colorMean.setRed(colorMean.getRed()+lColor.get(i).getRed());
+                        }
+                        colorMean.setBlue(colorMean.getBlue()/9);
+                        colorMean.setGreen(colorMean.getGreen()/9);
+                        colorMean.setRed(colorMean.getRed()/9);
+                        DebugLog.isStartDetect = true;
+                        DebugLog.meanColorValue = colorMean.rgbString();
+                    }
+                }
 
+                return false;
+            }
+        });
+        openCvCameraView.setVisibility(SurfaceView.VISIBLE);
+        openCvCameraView.setCvCameraViewListener(this);
     }
 
-    int Round(double x){
-        int y;
-        if(x >= (int)x+0.5)
-        y = (int)x++;
-        else
-        y = (int)x;
-        return y;
-    }
     //init widget gui
     private void initButton()
     {
@@ -368,8 +414,80 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         });
     }
 
+    //create mat from yaml
+    Mat readFromFile(String path)
+    {
+        Mat matReturn ;
+        try {
+            File file = new File(path);
+            BufferedReader br = new BufferedReader(new FileReader(file));
+            String line = br.readLine();
+
+            int row=0, col=0;
+            while(line!=null)
+            {
+                Log.e(TAG,line);
+                if(line.contains("rows:"))
+                {
+                    String[] strArray = line.split("\\:",2);
+                    row = Integer.parseInt(strArray[1] .trim());
+                    line = br.readLine();
+                }
+                if(line.contains("cols:"))
+                {
+                    String[] strArray = line.split("\\:",2);
+                    col = Integer.parseInt(strArray[1].trim());
+                    line = br.readLine();
+                }
+                if(row>0 && col>0)
+                {
+                    matReturn = new Mat(row,col, CvType.CV_32F);
+                    line = br.readLine();
+                    String matValue="";
+
+                    if(line.contains("["))
+                    {
+                        line = line.split("\\:",2)[1];
+                        while(!line.contains("]"))
+                        {
+                            matValue+=line;
+                            line = br.readLine();
+                        }
+                        matValue +=line;
+                        Log.e(TAG,matValue);
+                        matValue=matValue.replace("[","");
+                        matValue=matValue.replace("]","");
+                        String[] arrString = matValue.split(",");
+                        if(arrString.length!= (row*col))
+                        {
+                            Log.e(TAG,"loi me no roi ");
+                        }
+                        else
+                        {
+                            float[] matByte = new float[row*col];
+                            for( int i=0; i<matByte.length;i++)
+                            {
+                                matByte[i] = Float.parseFloat(arrString[i].trim());
+                                Log.e(TAG,arrString[i]);
+                            }
+                            matReturn.put(0,0,matByte);
+                            return matReturn;
+                        }
+                    }
+                }
+                line = br.readLine();
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
     void GetListFolder(String path)
     {
+        txtView.setText(path);
         folders = new ArrayList<String>();
         File f = new File(path);
         File[] files = f.listFiles();
@@ -430,8 +548,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     @Override
     public void onCameraViewStarted(int width, int height) {
-       grayScaleImage = new Mat(1080,1920,CvType.CV_8UC3);
-
 //        absoluteFaceSize = (int) (height*0.2);
     }
 
@@ -439,107 +555,132 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
     public void onCameraViewStopped() {
 
     }
+    double start;
+    List<Rect> list5Rect = new ArrayList<Rect>();
+    Point center = new Point();
+    Rect getFitRect(MatOfRect listRect)
+    {
+        List<Mat> listMat = new ArrayList<Mat>();
+        Rect rectReturn = new Rect();
+        int deviation = 195075;
+        Mat smallMat ;
+        for(int i=0; i<listRect.toArray().length;i++)
+        {
+            Rect currentRect = listRect.toArray()[i];
+            int x =currentRect.x;
+            int y = currentRect.y+(int)Math.floor(currentRect.height/3*2);
+            int w = currentRect.width/3*2;
+            int h =(int)Math.floor(currentRect.height/3/2);
+            Log.e(TAG, String.valueOf(y)+" "+String.valueOf(y+h)+" "+String.valueOf(x)+" "+String.valueOf(x+w)+" "+foreheadFrame.size().toString());
+            smallMat=foreheadFrame.submat(y,y+h,x,x+w);
+            LaserColor color = new LaserColor();
+            for(int row=0;row<smallMat.rows();row++)
+            {
+                for(int col=0; col<smallMat.cols();col++)
+                {
+                    color.setRed(color.getRed()+(int)smallMat.get(row,col)[0]);
+                    color.setGreen(color.getGreen()+(int)smallMat.get(row,col)[1]);
+                    color.setBlue(color.getBlue()+(int)smallMat.get(row,col)[2]);
+                }
+            }
+            int total = smallMat.rows()*smallMat.cols();
+            color.setBlue(color.getBlue()/total);
+            color.setGreen(color.getGreen()/total);
+            color.setRed(color.getRed()/total);
+            DebugLog.currentColorValue = String.valueOf(color.getBlue()/total);
+            int currentDeviation =(int)(Math.pow((colorMean.getRed()-color.getRed()),2) + Math.pow((colorMean.getGreen()-color.getGreen()),2) + Math.pow((colorMean.getBlue()-color.getBlue()),2));
+            if(currentDeviation < deviation)
+            {
+                deviation = currentDeviation;
+                list5Rect.add(currentRect);
+                if(list5Rect.size()>10)
+                    list5Rect.remove(0);
 
+                for(int iCount=0; iCount<list5Rect.size();iCount++)
+                {
+                    rectReturn.x+=list5Rect.get(iCount).x;
+                    rectReturn.y+=list5Rect.get(iCount).y;
+                    rectReturn.width+=list5Rect.get(iCount).width;
+                    rectReturn.height+=list5Rect.get(iCount).height;
+                    center.x +=x+w/2;
+                    center.y +=y+h/2;
+                }
+                rectReturn.x=Math.round(rectReturn.x/list5Rect.size());
+                rectReturn.y=Math.round(rectReturn.y/list5Rect.size());
+                rectReturn.width=Math.round(rectReturn.width/list5Rect.size());
+                rectReturn.height=Math.round(rectReturn.height/list5Rect.size());
+            }
+
+        }
+//        for(int i=0; i<listMat.size();i++)
+//        {
+//            imagePrint(listMat.get(i));
+//        }
+        return rectReturn;
+    }
     @Override
     public Mat onCameraFrame(final CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
-        foreheadFrame.release();
+//        Log.e(TAG,"start camera frame");
+         start = System.currentTimeMillis();
         inputFrame.rgba().copyTo(foreheadFrame);
-
-        Log.e(TAG, foreheadFrame.size() + " " + foreheadFrame.empty());
-
-        detectCPU(scale,false);
-        history_frames.add(foreheadFrame);
-        history_faces.add(foreheadList);
-        int cur_size = history_frames.size();
-        if(cur_size>4)
+        if(!DebugLog.isStartDetect)
+            return foreheadFrame;
+//        Log.e(TAG,String.valueOf(foreheadFrame.width()+" "+String.valueOf(foreheadFrame.height())));
+        if(foreheadFrame.width()==1920 && foreheadFrame.height()==1080)
         {
-//            double fps = cv::getTickFrequency() / (cv::getTickCount() - start);
-            //std::cout << "FPS : " << fps << std::endl;
-
-            //Using this for DNN filter out some non-head Mat
-            List<Boolean> yesheads = new ArrayList<Boolean>();
-
-
-            for (int i=0; i<(history_faces.get(cur_size-3).toList().size());i++) yesheads.add(true);
-
-
-            //------Do the final check to remove moise/////////////////////////////////////////////////
-
-            //Check the face list with previous and later frame, make sure it is face, not noise
-            MatOfRect faces_check1, faces_check2;
-            faces_check1 = history_faces.get(cur_size-3);
-            faces_check2 = history_faces.get(cur_size-4);
-            //Check face between consecutive frames to remove noise
-            for (int i=0;i<faces_check1.toList().size();i++){
-                Point pt1 = new Point(faces_check1.toList().get(i).x+faces_check1.toList().get(i).width/2, faces_check1.toList().get(i).y+faces_check1.toList().get(i).height/2);
-                float mindist = 100000;
-                for (int j=0;j<faces_check2.toList().size();j++){
-                    Point pt2 = new Point(faces_check2.toList().get(j).x+faces_check2.toList().get(j).width/2, faces_check2.toList().get(j).y+faces_check2.toList().get(j).height/2);
-                    float dist = (faces_check1.toList().get(i).x-faces_check2.toList().get(j).x)*(faces_check1.toList().get(i).x-faces_check2.toList().get(j).x)+
-                            (faces_check1.toList().get(i).y-faces_check2.toList().get(j).y)*(faces_check1.toList().get(i).y-faces_check2.toList().get(j).y);
-                    if (dist<mindist) mindist = dist;
-                }
-                if (mindist>50) yesheads.set(i,false);
-            }
-
-            //Check face in previewing frame to remove occlusion
-            for (int i=0;i<faces_check1.toList().size();i++){
-                if (yesheads.get(i)==false) continue;
-                for (int j=i+1;j<faces_check1.toList().size();j++){
-                    if (yesheads.get(j)==false) continue;
-                    float distx = Math.abs(faces_check1.toList().get(i).x-faces_check1.toList().get(j).x);
-                    float disty = Math.abs(faces_check1.toList().get(i).y-faces_check1.toList().get(j).y);
-                    if (distx<(int) faces_check1.toList().get(i).width && disty<5*(int) faces_check1.toList().get(i).height){
-                        if (faces_check1.toList().get(i).y>faces_check1.toList().get(j).y) yesheads.set(j,false);
-                        else yesheads.set(i,false);
-                    }
-                }
-            }
-
-            ///////////////////////NOW DRAW FRAME/////////////////////////////////////////////
-            int i = 0;
-            int counthead =0;
-            Mat img = history_frames.get(cur_size-3);
-            for( ; i<faces_check1.toList().size(); i++ )
-            {
-                if (yesheads.get(i)){
-                    Rect rect = faces_check1.toArray()[i];
-                    // std::cout<<faces_check1[i].y<<" "<<(int) img.rows/3<<std::endl;
-                    if (faces_check1.toArray()[i].y >(int) img.rows()/3 && faces_check1.toArray()[i].y<(int) img.rows()*2/3)
-                    {
-                        double p1 = faces_check1.toArray()[i].x+(int) faces_check1.toArray()[i].width/5;
-                        double p2 = faces_check1.toArray()[i].y+(int) faces_check1.toArray()[i].height/2.7;
-                        double p3 =  faces_check1.toArray()[i].width*3/5;
-                        double p4 = faces_check1.toArray()[i].height/3;
-                        Imgproc.rectangle(img,new Point(p1,p2), new Point(p3,p4),new Scalar(0,255,0),2);
-                    }
-                        //cv::rectangle(img,faces_check1[i],CV_RGB(0,255,0),2);
-
-                    //Check here if value is negative
-                    counthead++;
-                }
-            }
-            if( Math.abs(scale-1.0)>.001 )
-            {
-                resize(img, img,new Size((int)(img.cols()/scale), (int)(img.rows()/scale)));
-            }
-            //string str = "Number of people: "+std::to_string(counthead);
-            //putText(img, str, Point(20,20), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(255,255,0), 2.0 );
-            takePicture=false;
-            history_faces.clear();
-            history_frames.clear();
-            return img;
+            DetectProcess();
         }
+        Imgproc.rectangle(foreheadFrame,subRect.tl(),subRect.br(),new Scalar(0,255,0),2);
 
         if(takePicture)
         {
-            imagePrint(inputFrame.rgba());
+            imagePrint(foreheadFrame);
             takePicture=false;
         }
-        return inputFrame.rgba();
+        Log.e(TAG,"end camera frame");
+        DebugLog.processTime = String.valueOf(System.currentTimeMillis()-start);
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                txtView.setText(DebugLog.printLog());
+            }
+        });
+        return foreheadFrame;
     }
 
+    void DetectProcess()
+    {
+        Mat subMat = new Mat(foreheadFrame,subRect);
+        cvtColor(subMat,subMat,Imgproc.COLOR_RGB2GRAY);
+        Imgproc.resize(subMat,subMat,new Size(subMat.width()/2,subMat.height()/2));
+////        detectCPU(scale,false);
 
+        foreheadCascade.detectMultiScale(subMat, foreheadList, 1.1, 3, Objdetect.CASCADE_SCALE_IMAGE,
+                new Size(50, 30),new Size(160, 100)); //Size(40, 40), Size(70, 70));
+//
+        Rect drawRect = new Rect();
+//            drawRect = foreheadList.toArray()[0];
+        if(foreheadList.toArray().length>1)
+        {
+            drawRect=getFitRect(foreheadList);
+        }
+        else if(foreheadList.toArray().length==1)
+        {
+            drawRect = foreheadList.toArray()[0];
+        }
+//            for(int i=0; i< foreheadList.toArray().length;i++)
+//            {
+        Point p1 = drawRect.tl();
+        Point p2 = new Point(drawRect.width,drawRect.height);
+        p1.x = (p1.x*2+subRect.tl().x)+20; p1.y = (p1.y*2+subRect.tl().y)+5;
+        p2.x = (p2.x*2+p1.x)-40; p2.y = (p2.y*2+p1.y)-5;
+
+        Imgproc.rectangle(foreheadFrame,p1,p2,new Scalar(0,255,0),2);
+        center =new Point(((p1.x+p2.x)/2),((p1.y+p2.y)/2));
+        Imgproc.circle(foreheadFrame,center,1,new Scalar(255,0,0),3);
+//            }
+        subMat = null;
+    }
     public void imagePrint(Mat mat)
     {
         int iNum =0;
@@ -656,6 +797,19 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                     Toast.makeText(mActivity.get(), "DSR_CHANGE",Toast.LENGTH_LONG).show();
                     break;
             }
+        }
+    }
+
+    static class DebugLog{
+        public static boolean isStartDetect=false;
+        public static String meanColorValue="";
+        public static String currentColorValue="";
+        public static String processTime="";
+        public static String printLog(){
+            return "isStartDetect: "+isStartDetect
+                    +"\nmeanColorValue:"+meanColorValue
+                    +"\ncurrentColorValue:"+currentColorValue
+                    +"\nprocessTime:"+processTime;
         }
     }
 }
