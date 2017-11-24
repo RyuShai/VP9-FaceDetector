@@ -231,7 +231,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         String path = Environment.getExternalStorageDirectory()+"/Ryu";
         Log.d(TAG,path);
         GetListFolder(path);
-//        readFromFile(Environment.getExternalStorageDirectory()+"/cam2laserMatrices.yml");
+        Mat testMat = readFromFile(Environment.getExternalStorageDirectory()+"/cam2laserMatrices.yml");
+
 //        Camera camera = Camera.open();
 //        Camera.Parameters params = camera.getParameters();
 //        List<Camera.Size> sizes = params.getSupportedPictureSizes();
@@ -243,7 +244,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 //        camera.release();
         initCamera();
         colorMean = new LaserColor();
-        subRect = new Rect(460,400,530,350);
+        subRect = new Rect(460,400,530,350);// khu vuc detect
         foreheadFrame = new Mat();
         foreheadList = new MatOfRect();
         lColor = new ArrayList<LaserColor>();
@@ -441,7 +442,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                 }
                 if(row>0 && col>0)
                 {
-                    matReturn = new Mat(row,col, CvType.CV_32F);
+                    matReturn = new Mat(row,col, CvType.CV_32FC1);
                     line = br.readLine();
                     String matValue="";
 
@@ -464,11 +465,11 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                         }
                         else
                         {
-                            float[] matByte = new float[row*col];
+                            double[] matByte = new double[row*col];
                             for( int i=0; i<matByte.length;i++)
                             {
                                 matByte[i] = Float.parseFloat(arrString[i].trim());
-                                Log.e(TAG,arrString[i]);
+                                Log.e(TAG,"Value:" + matByte[i]);
                             }
                             matReturn.put(0,0,matByte);
                             return matReturn;
@@ -637,7 +638,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             imagePrint(foreheadFrame);
             takePicture=false;
         }
-        Log.e(TAG,"end camera frame");
+
+        haFunction();
+        
         DebugLog.processTime = String.valueOf(System.currentTimeMillis()-start);
         runOnUiThread(new Runnable() {
             @Override
@@ -645,6 +648,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                 txtView.setText(DebugLog.printLog());
             }
         });
+
         return foreheadFrame;
     }
 
@@ -653,13 +657,12 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         Mat subMat = new Mat(foreheadFrame,subRect);
         cvtColor(subMat,subMat,Imgproc.COLOR_RGB2GRAY);
         Imgproc.resize(subMat,subMat,new Size(subMat.width()/2,subMat.height()/2));
-////        detectCPU(scale,false);
 
         foreheadCascade.detectMultiScale(subMat, foreheadList, 1.1, 3, Objdetect.CASCADE_SCALE_IMAGE,
                 new Size(50, 30),new Size(160, 100)); //Size(40, 40), Size(70, 70));
-//
+
         Rect drawRect = new Rect();
-//            drawRect = foreheadList.toArray()[0];
+
         if(foreheadList.toArray().length>1)
         {
             drawRect=getFitRect(foreheadList);
@@ -668,18 +671,23 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         {
             drawRect = foreheadList.toArray()[0];
         }
-//            for(int i=0; i< foreheadList.toArray().length;i++)
-//            {
+
         Point p1 = drawRect.tl();
         Point p2 = new Point(drawRect.width,drawRect.height);
         p1.x = (p1.x*2+subRect.tl().x)+20; p1.y = (p1.y*2+subRect.tl().y)+5;
         p2.x = (p2.x*2+p1.x)-40; p2.y = (p2.y*2+p1.y)-5;
 
         Imgproc.rectangle(foreheadFrame,p1,p2,new Scalar(0,255,0),2);
+
         center =new Point(((p1.x+p2.x)/2),((p1.y+p2.y)/2));
         Imgproc.circle(foreheadFrame,center,1,new Scalar(255,0,0),3);
-//            }
+
         subMat = null;
+    }
+    void haFunction()
+    {
+
+//        sendData(center.x,center.y);
     }
     public void imagePrint(Mat mat)
     {
