@@ -47,6 +47,13 @@ import org.opencv.imgproc.Imgproc;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.objdetect.CascadeClassifier;
 import org.opencv.objdetect.Objdetect;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserFactory;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -62,8 +69,13 @@ import java.security.cert.PolicyNode;
 import java.sql.Date;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 
 import static org.opencv.core.Core.*;
 import static org.opencv.core.CvType.CV_8UC1;
@@ -158,7 +170,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
             usbService = null;
         }
     };
-
+    //data from file
+    Mat rRodC2L,tC2L,camera_intrinsics,distortion;
+    double alphaStep,betaStep;
 
     BaseLoaderCallback mLoaderCallBack= new BaseLoaderCallback(this) {
         @Override
@@ -242,7 +256,9 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 //            Log.e(TAG,String.valueOf(cam.width) + "-"+String.valueOf(cam.height));
 //        }
 //        camera.release();
+        InitMatricesFromFile(Environment.getExternalStorageDirectory()+"/cam2laserMatrices.xml");
         initCamera();
+
         colorMean = new LaserColor();
         subRect = new Rect(460,400,530,350);// khu vuc detect
         foreheadFrame = new Mat();
@@ -541,12 +557,110 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         usbService.write(data.getBytes());
     }
 
-    /**
-     * A native method that is implemented by the 'native-lib' native library,
-     * which is packaged with this application.
-     */
-    public native String stringFromJNI();
+    void InitMatricesFromFile(String path)
+    {
+        File initialFile = new File(Environment.getExternalStorageDirectory()+"/cam2laserMatrices.xml");
+        XmlPullParserFactory xmlFactoryObject = null;
+        XmlPullParser myParser = null;
+        Log.e(TAG,"Ryu haha");
+        try {
+            InputStream is =  new FileInputStream(initialFile);
+            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+            Document doc = dBuilder.parse(is);
+            Log.e(TAG,"here");
 
+            Element element=doc.getDocumentElement();
+            element.normalize();
+            NodeList nList;
+            if((nList= doc.getElementsByTagName("rRodC2L")).getLength()>0)
+            {
+                initMatrix(nList.item(0));
+            }
+            if((nList= doc.getElementsByTagName("tC2L")).getLength()>0)
+            {
+                initMatrix(nList.item(0));
+            }
+            if((nList= doc.getElementsByTagName("camera_intrinsics")).getLength()>0)
+            {
+                initMatrix(nList.item(0));
+            }
+            if((nList= doc.getElementsByTagName("distortion")).getLength()>0)
+            {
+                initMatrix(nList.item(0));
+            }
+            String alpha = doc.getElementsByTagName("alphaStep").item(0).getChildNodes().item(0).getNodeValue();
+            if(alpha!=null)
+                alphaStep = Double.parseDouble(alpha);
+            String beta = doc.getElementsByTagName("betaStep").item(0).getChildNodes().item(0).getNodeValue();
+            if(beta!=null)
+                betaStep = Double.parseDouble(beta);
+            Log.e("Test","Ryu alpha: "+alpha + " beta: "+beta);
+
+        }catch (IOException e) {
+            e.printStackTrace();
+        } catch (ParserConfigurationException e) {
+            e.printStackTrace();
+        } catch (SAXException e) {
+            e.printStackTrace();
+        }
+    }
+    private static String getValue(String tag, Element element) {
+        NodeList nodeList = element.getElementsByTagName(tag).item(0).getChildNodes();
+        Node node = nodeList.item(0);
+        return node.getNodeValue();
+    }
+    void initMatrix(Node node)
+    {
+        if (node.getNodeType() == Node.ELEMENT_NODE) {
+            Element element = (Element) node;
+            Log.e(TAG,"tag name: "+element.getTagName());
+            Log.e(TAG,"\nrRodC2 rows : " + getValue("rows", element)+"\n");
+            Log.e(TAG,"rRodC2L cols : " + getValue("cols", element)+"\n");
+            Log.e(TAG,"data: "+ getValue("data",element)+"\n");
+            Log.e(TAG,"-----------------------");
+            int row,col;
+            row = Integer.parseInt(getValue("rows", element));
+            col= Integer.parseInt(getValue("cols", element));
+            String data = getValue("data",element);
+            data = data.replace("\r\n", "").replace("\n", "");
+            while(data.contains("  "))
+            {
+                data = data.replace("  "," ");
+            }
+            data = data.trim();
+            Log.e(TAG,"data: "+data);
+            String[] listData  = data.split(" ");
+            Log.e(TAG,String.valueOf(listData.length));
+            double[] realData = new double[listData.length];
+            for(int i=0;i<listData.length;i++)
+            {
+
+                realData[i] = Float.parseFloat(listData[i]);
+                Log.e(TAG,"Ryu:"+realData[i]);
+            }
+            String mat = element.getTagName();
+            switch (mat)
+            {
+                case "rRodC2L":
+                    rRodC2L = new Mat(row,col,CvType.CV_64FC1);
+                    rRodC2L.put(0,0,realData);
+                    break;
+                case "tC2L":
+                    tC2L = new Mat(row,col,CvType.CV_64FC1);
+                    tC2L.put(0,0,realData);
+                    break;
+                case "camera_intrinsics":
+                    camera_intrinsics = new Mat(row,col,CvType.CV_64FC1);
+                    camera_intrinsics.put(0,0,realData);
+                    break;
+                case "distortion":
+                    distortion = new Mat(row,col,CvType.CV_64FC1);
+                    distortion.put(0,0,realData);
+                    break;
+            }
+        }
+    }
     @Override
     public void onCameraViewStarted(int width, int height) {
 //        absoluteFaceSize = (int) (height*0.2);
@@ -619,6 +733,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 //        }
         return rectReturn;
     }
+    int frameCount=0;
+    double frameTime=0;
     @Override
     public Mat onCameraFrame(final CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
 //        Log.e(TAG,"start camera frame");
@@ -640,17 +756,21 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         }
 
         haFunction();
-        
+        frameCount++;
         DebugLog.processTime = String.valueOf(System.currentTimeMillis()-start);
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                txtView.setText(DebugLog.printLog());
-            }
-        });
+
+
+//        runOnUiThread(new Runnable() {
+//            @Override
+//            public void run() {
+//                txtView.setText(DebugLog.printLog());
+//            }
+//        });
 
         return foreheadFrame;
     }
+
+
 
     void DetectProcess()
     {
